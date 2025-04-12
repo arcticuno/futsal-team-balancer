@@ -52,6 +52,7 @@ with st.expander("Start New Session (Admin Only)"):
                 }
                 sb_insert("sessions", payload)
                 st.success("New session started!")
+                st.experimental_rerun()
 
 # === FETCH CURRENT SESSION ===
 sessions = sb_select("sessions", filters=["order=created_at.desc", "limit=1"])
@@ -67,13 +68,20 @@ if sessions:
     # === JOIN / LEAVE SESSION ===
     name = st.text_input("Your Name")
     if name:
+        # Get current participants
         participants = sb_select("session_participants", [f"session_id=eq.{session_id}"])
         joined_names = [p['player_name'] for p in participants]
+        already_joined = name in joined_names
 
-        if name in joined_names:
+        if already_joined:
+            st.success("You are already in the session.")
             if st.button("Leave Session"):
-                sb_delete("session_participants", [f"session_id=eq.{session_id}", f"player_name=eq.{name}"])
-                st.success("You have left the session.")
+                response = sb_delete("session_participants", [f"session_id=eq.{session_id}", f"player_name=eq.{name}"])
+                if response.status_code == 204:
+                    st.success("You have left the session.")
+                    st.experimental_rerun()
+                else:
+                    st.error("Failed to leave session.")
         else:
             if st.button("Join Session"):
                 sb_insert("session_participants", [{
@@ -82,11 +90,12 @@ if sessions:
                     "joined_by": name
                 }])
                 st.success("You have joined the session!")
+                st.experimental_rerun()
 
         # === VIEW PARTICIPANTS ===
-        participants = sb_select("session_participants", [f"session_id=eq.{session_id}"])
+        updated = sb_select("session_participants", [f"session_id=eq.{session_id}"])
         st.markdown("### Players in Session")
-        st.write(pd.DataFrame(participants)[["player_name", "joined_by", "joined_at"]])
+        st.write(pd.DataFrame(updated)[["player_name", "joined_by", "joined_at"]])
     else:
         st.info("Enter your name to join or view the session.")
 else:

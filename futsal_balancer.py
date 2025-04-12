@@ -1,114 +1,93 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
-import random
+import uuid
+import datetime
+import requests
 
-# Constants
-DB_FILE = 'players.db'
-PASSWORD = 'jogabotnito'
+# === CONFIG ===
+SUPABASE_URL = "https://njljwzowdrtyflyzkotr.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qbGp3em93ZHJ0eWZseXprb3RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQzOTEyMDEsImV4cCI6MjA1OTk2NzIwMX0.hcudB9gVIWFGqD3OUL1HGlRec2-Q1LxKrbAuxm-lhBs"
+HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+ADMIN_PASSWORD = "jogabotnito"
 
-# DB setup
-conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS players (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    rating REAL NOT NULL
-)
-''')
-conn.commit()
+# === HELPER: Supabase ===
+def sb_select(table, filters=None):
+    url = f"{SUPABASE_URL}/rest/v1/{table}?select=*"
+    if filters:
+        url += "&" + "&".join(filters)
+    res = requests.get(url, headers=HEADERS)
+    return res.json()
 
-# Page config
-st.set_page_config(page_title="Futsal Team Balancer", layout="centered")
-st.title("Futsal Team Balancer")
+def sb_insert(table, payload):
+    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    return requests.post(url, headers={**HEADERS, "Content-Type": "application/json"}, json=payload)
 
-# --- Admin Panel ---
-with st.expander("Admin Panel"):
-    pw_input = st.text_input("Enter admin password", type="password")
-    is_admin = pw_input == PASSWORD
-    if is_admin:
-        st.success("Admin access granted.")
+def sb_delete(table, filters):
+    url = f"{SUPABASE_URL}/rest/v1/{table}?{'&'.join(filters)}"
+    return requests.delete(url, headers=HEADERS)
 
-        # Add Player
-        st.subheader("Add New Player")
-        with st.form("add_player_form"):
-            new_name = st.text_input("Player Name")
-            new_rating = st.number_input("Rating (1.0 - 10.0)", min_value=1.0, max_value=10.0, step=0.1)
-            submitted = st.form_submit_button("Add Player")
-            if submitted and new_name.strip():
-                try:
-                    cursor.execute("INSERT INTO players (name, rating) VALUES (?, ?)", (new_name.strip(), new_rating))
-                    conn.commit()
-                    st.success(f"Player {new_name} added.")
-                except sqlite3.IntegrityError:
-                    st.error(f"Player {new_name} already exists.")
+# === START ===
+st.set_page_config(page_title="Futsal Session Manager", layout="centered")
+st.title("Futsal Session Manager")
 
-        # Edit Player List
-        st.subheader("Player List")
-        df_admin = pd.read_sql_query("SELECT id, name, rating FROM players", conn)
-        edited_df = st.data_editor(df_admin, num_rows="dynamic", use_container_width=True)
-        if edited_df is not None:
-            deleted = df_admin[~df_admin['id'].isin(edited_df['id'])]
-            for _, row in deleted.iterrows():
-                cursor.execute("DELETE FROM players WHERE id = ?", (row['id'],))
-            for _, row in edited_df.iterrows():
-                cursor.execute("UPDATE players SET name = ?, rating = ? WHERE id = ?", (row['name'], row['rating'], row['id']))
-            conn.commit()
+# === ADMIN PANEL: Start Session ===
+with st.expander("Start New Session (Admin Only)"):
+    admin_pw = st.text_input("Enter Admin Password", type="password")
+    if admin_pw == ADMIN_PASSWORD:
+        st.success("Admin Access Granted")
+        with st.form("start_session_form"):
+            location = st.text_input("Location")
+            sub_location = st.text_input("Sub-Location")
+            date = st.date_input("Date", value=datetime.date.today())
+            time = st.time_input("Time", value=datetime.datetime.now().time())
+            submit_session = st.form_submit_button("Start Session")
 
-        # Export Player List
-        csv_players = df_admin.to_csv(index=False).encode('utf-8')
-        st.download_button("Download Player List as CSV", csv_players, "player_list.csv", "text/csv")
+            if submit_session:
+                payload = {
+                    "id": str(uuid.uuid4()),
+                    "location": location,
+                    "sub_location": sub_location,
+                    "session_date": str(date),
+                    "session_time": str(time)
+                }
+                sb_insert("sessions", payload)
+                st.success("New session started!")
 
-# --- Public Section: Team Selection & Shuffle ---
-st.header("Generate Balanced Teams")
+# === FETCH CURRENT SESSION ===
+sessions = sb_select("sessions", filters=["order=created_at.desc", "limit=1"])
+if sessions:
+    current_session = sessions[0]
+    session_id = current_session["id"]
+    st.subheader("Active Session")
+    st.markdown(f"**Location**: {current_session['location']} - {current_session['sub_location']}  \n"
+                f"**Date**: {current_session['session_date']} at {current_session['session_time']}")
 
-df = pd.read_sql_query("SELECT name, rating FROM players", conn)
-if df.empty:
-    st.info("No players in the database. Admins can add players above.")
+    st.divider()
+
+    # === JOIN / LEAVE SESSION ===
+    name = st.text_input("Your Name")
+    if name:
+        participants = sb_select("session_participants", [f"session_id=eq.{session_id}"])
+        joined_names = [p['player_name'] for p in participants]
+
+        if name in joined_names:
+            if st.button("Leave Session"):
+                sb_delete("session_participants", [f"session_id=eq.{session_id}", f"player_name=eq.{name}"])
+                st.success("You have left the session.")
+        else:
+            if st.button("Join Session"):
+                sb_insert("session_participants", [{
+                    "session_id": session_id,
+                    "player_name": name,
+                    "joined_by": name
+                }])
+                st.success("You have joined the session!")
+
+        # === VIEW PARTICIPANTS ===
+        participants = sb_select("session_participants", [f"session_id=eq.{session_id}"])
+        st.markdown("### Players in Session")
+        st.write(pd.DataFrame(participants)[["player_name", "joined_by", "joined_at"]])
+    else:
+        st.info("Enter your name to join or view the session.")
 else:
-    selected_players = st.multiselect("Pick 15 players", df['name'].tolist())
-    session_key = "team_shuffle"
-
-    if len(selected_players) == 15:
-        players_df = df[df['name'].isin(selected_players)]
-
-        if st.button("Generate Teams"):
-            st.session_state[session_key] = random.sample(list(zip(players_df['name'], players_df['rating'])), 15)
-
-        if session_key in st.session_state:
-            if st.button("Reshuffle Teams"):
-                st.session_state[session_key] = random.sample(list(zip(players_df['name'], players_df['rating'])), 15)
-
-            # Get current selection from session
-            player_data = st.session_state[session_key]
-
-            # Sort for semi-balanced team distribution
-            player_data.sort(key=lambda x: -x[1])  # sort by rating descending
-            teams = {1: [], 2: [], 3: []}
-            totals = {1: 0.0, 2: 0.0, 3: 0.0}
-
-            for name, rating in player_data:
-                min_team = min(totals, key=totals.get)
-                teams[min_team].append((name, rating))
-                totals[min_team] += rating
-
-            team_export_rows = []
-
-            for i in range(1, 4):
-                avg = round(totals[i] / len(teams[i]), 2)
-                st.subheader(f"Team {i} (Average Rating: {avg})")
-                names_only = [name for name, _ in teams[i]]
-                st.write(", ".join(names_only))
-                for name in names_only:
-                    team_export_rows.append((f"Team {i}", name))
-
-            diff = round(max(totals.values()) - min(totals.values()), 2)
-            st.success(f"Rating difference between strongest and weakest team: {diff}")
-
-            teams_df = pd.DataFrame(team_export_rows, columns=["Team", "Player"])
-            teams_csv = teams_df.to_csv(index=False).encode('utf-8')
-            st.download_button("Download Teams as CSV", teams_csv, "teams.csv", "text/csv")
-    elif len(selected_players) > 0:
-        st.warning("Please select exactly 15 players.")
-        
+    st.warning("No active session. Admin must start one.")

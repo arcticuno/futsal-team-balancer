@@ -4,8 +4,11 @@ import requests
 
 # === CONFIG ===
 SUPABASE_URL = "https://njljwzowdrtyflyzkotr.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # use your actual full key
-HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qbGp3em93ZHJ0eWZseXprb3RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQzOTEyMDEsImV4cCI6MjA1OTk2NzIwMX0.hcudB9gVIWFGqD3OUL1HGlRec2-Q1LxKrbAuxm-lhBs"
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}"
+}
 
 # === Supabase Helpers ===
 def sb_select(table, filters=None):
@@ -16,9 +19,13 @@ def sb_select(table, filters=None):
 
 def sb_insert(table, payload):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
-    return requests.post(url, headers={**HEADERS, "Content-Type": "application/json"}, json=payload)
+    return requests.post(
+        url,
+        headers={**HEADERS, "Content-Type": "application/json"},
+        json=payload
+    )
 
-# === PAGE START ===
+# === Streamlit UI ===
 st.set_page_config(page_title="Rate Players", layout="centered")
 st.title("Rate a Player")
 
@@ -28,28 +35,29 @@ score = st.slider("Rating (1.0 - 10.0)", 1.0, 10.0, step=0.1)
 
 if st.button("Submit Rating"):
     if rater.strip() and ratee.strip():
-        sb_insert("player_ratings", {
+        response = sb_insert("player_ratings", {
             "rater": rater.strip(),
             "ratee": ratee.strip(),
             "rating": float(score)
         })
-        st.success(f"You rated {ratee} a {score}")
+        if response.status_code in [200, 201]:
+            st.success(f"You rated {ratee} a {score}")
+        else:
+            st.error(f"Rating failed: {response.status_code}")
+            st.write("DEBUG:", response.text)
     else:
-        st.warning("Enter both names.")
+        st.warning("Enter both names before submitting.")
 
 # === Leaderboard ===
 st.divider()
 st.header("Leaderboard")
 
 ratings = sb_select("player_ratings")
-
-# Safely convert to DataFrame
 if isinstance(ratings, list) and len(ratings) > 0 and isinstance(ratings[0], dict) and ratings[0]:
     df = pd.DataFrame(ratings)
 else:
     df = pd.DataFrame(columns=["rater", "ratee", "rating", "timestamp"])
 
-# Display leaderboard
 if not df.empty and "ratee" in df.columns:
     leaderboard = df.groupby("ratee").agg(
         avg_rating=("rating", "mean"),

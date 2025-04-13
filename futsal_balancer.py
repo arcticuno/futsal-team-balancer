@@ -7,8 +7,11 @@ import random
 
 # === CONFIG ===
 SUPABASE_URL = "https://njljwzowdrtyflyzkotr.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # replace with your full key
-HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qbGp3em93ZHJ0eWZseXprb3RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQzOTEyMDEsImV4cCI6MjA1OTk2NzIwMX0.hcudB9gVIWFGqD3OUL1HGlRec2-Q1LxKrbAuxm-lhBs"
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}"
+}
 ADMIN_PASSWORD = "jogabotnito"
 
 # === Supabase Helpers ===
@@ -26,11 +29,11 @@ def sb_delete(table, filters):
     url = f"{SUPABASE_URL}/rest/v1/{table}?{'&'.join(filters)}"
     return requests.delete(url, headers=HEADERS)
 
-# === Start ===
+# === App Start ===
 st.set_page_config(page_title="Futsal Session", layout="centered")
 st.title("Futsal Session Manager")
 
-# === Admin: Start Session ===
+# === Admin Panel ===
 with st.expander("Start New Session (Admin Only)"):
     admin_pw = st.text_input("Enter Admin Password", type="password")
     if admin_pw == ADMIN_PASSWORD:
@@ -51,11 +54,11 @@ with st.expander("Start New Session (Admin Only)"):
                 }
                 response = sb_insert("sessions", payload)
                 st.success("Session submitted. Please refresh manually to see it.")
-                st.write("DEBUG: Insert status", response.status_code)
+                st.write("DEBUG - Insert status", response.status_code)
                 try:
                     st.json(response.json())
                 except Exception:
-                    st.write("DEBUG: Raw response:", response.text)
+                    st.write("DEBUG - Raw response:", response.text)
 
 # === Fetch current session ===
 sessions = sb_select("sessions", filters=["order=created_at.desc", "limit=1"])
@@ -70,7 +73,7 @@ st.subheader("Active Session")
 st.markdown(f"**Location**: {current_session['location']} - {current_session['sub_location']}  \n"
             f"**Date**: {current_session['session_date']} at {current_session['session_time']}")
 
-# === Join / Leave ===
+# === Join/Leave ===
 name = st.text_input("Your Name")
 participants = sb_select("session_participants", [f"session_id=eq.{session_id}"])
 joined_names = [p.get('player_name', '') for p in participants]
@@ -102,7 +105,7 @@ if participants:
 else:
     st.info("No participants yet.")
 
-# === Sort Teams if 15 Joined ===
+# === Sort Teams if 15 Players ===
 if len(participants) == 15:
     st.divider()
     st.subheader("Generate Balanced Teams")

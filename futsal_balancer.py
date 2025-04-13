@@ -84,8 +84,7 @@ if name:
         st.success("You are in the session.")
         if st.button("Leave Session"):
             sb_delete("session_participants", [f"session_id=eq.{session_id}", f"player_name=eq.{name}"])
-            st.success("You left the session.")
-            st.experimental_rerun()
+            st.success("You left the session! Please refresh the page to update.")
     else:
         if st.button("Join Session"):
             sb_insert("session_participants", [{
@@ -93,8 +92,7 @@ if name:
                 "player_name": name,
                 "joined_by": name
             }])
-            st.success("You joined the session!")
-            st.experimental_rerun()
+            st.success("You joined the session! Please refresh the page to update.")
 
 # === Show Players ===
 st.markdown("### Joined Players")

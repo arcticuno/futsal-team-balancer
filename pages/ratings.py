@@ -7,6 +7,7 @@ SUPABASE_URL = "https://njljwzowdrtyflyzkotr.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # use your actual full key
 HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
 
+# === Supabase Helpers ===
 def sb_select(table, filters=None):
     url = f"{SUPABASE_URL}/rest/v1/{table}?select=*"
     if filters:
@@ -17,6 +18,7 @@ def sb_insert(table, payload):
     url = f"{SUPABASE_URL}/rest/v1/{table}"
     return requests.post(url, headers={**HEADERS, "Content-Type": "application/json"}, json=payload)
 
+# === PAGE START ===
 st.set_page_config(page_title="Rate Players", layout="centered")
 st.title("Rate a Player")
 
@@ -35,20 +37,25 @@ if st.button("Submit Rating"):
     else:
         st.warning("Enter both names.")
 
+# === Leaderboard ===
 st.divider()
 st.header("Leaderboard")
 
 ratings = sb_select("player_ratings")
-if ratings:
+
+# Safely convert to DataFrame
+if isinstance(ratings, list) and len(ratings) > 0 and isinstance(ratings[0], dict) and ratings[0]:
     df = pd.DataFrame(ratings)
-    if not df.empty and "ratee" in df.columns:
-        leaderboard = df.groupby("ratee").agg(
-            avg_rating=("rating", "mean"),
-            num_ratings=("rating", "count")
-        ).reset_index().sort_values("avg_rating", ascending=False)
-        leaderboard["avg_rating"] = leaderboard["avg_rating"].round(2)
-        st.dataframe(leaderboard, use_container_width=True)
-    else:
-        st.info("No ratings data available.")
 else:
-    st.info("No ratings data available.")
+    df = pd.DataFrame(columns=["rater", "ratee", "rating", "timestamp"])
+
+# Display leaderboard
+if not df.empty and "ratee" in df.columns:
+    leaderboard = df.groupby("ratee").agg(
+        avg_rating=("rating", "mean"),
+        num_ratings=("rating", "count")
+    ).reset_index().sort_values("avg_rating", ascending=False)
+    leaderboard["avg_rating"] = leaderboard["avg_rating"].round(2)
+    st.dataframe(leaderboard, use_container_width=True)
+else:
+    st.info("No ratings yet.")

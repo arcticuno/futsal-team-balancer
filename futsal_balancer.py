@@ -7,7 +7,7 @@ import random
 
 # === CONFIG ===
 SUPABASE_URL = "https://njljwzowdrtyflyzkotr.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # (keep the full key from earlier)
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # use your actual full key
 HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
 ADMIN_PASSWORD = "jogabotnito"
 
@@ -53,71 +53,77 @@ with st.expander("Start New Session (Admin Only)"):
 
 # === Get Current Session ===
 sessions = sb_select("sessions", filters=["order=created_at.desc", "limit=1"])
-if sessions:
-    current_session = sessions[0]
-    session_id = current_session["id"]
-    st.subheader("Active Session")
-    st.markdown(f"**Location**: {current_session['location']} - {current_session['sub_location']}  \n"
-                f"**Date**: {current_session['session_date']} at {current_session['session_time']}")
-
-    name = st.text_input("Your Name")
-    participants = sb_select("session_participants", [f"session_id=eq.{session_id}"])
-    joined_names = [p['player_name'] for p in participants]
-    already_joined = name in joined_names
-
-    if name:
-        if already_joined:
-            st.success("You are in the session.")
-            if st.button("Leave Session"):
-                sb_delete("session_participants", [f"session_id=eq.{session_id}", f"player_name=eq.{name}"])
-                st.success("You left the session.")
-                st.experimental_rerun()
-        else:
-            if st.button("Join Session"):
-                sb_insert("session_participants", [{
-                    "session_id": session_id,
-                    "player_name": name,
-                    "joined_by": name
-                }])
-                st.success("You joined the session!")
-                st.experimental_rerun()
-
-    st.markdown("### Joined Players")
-    st.write(pd.DataFrame(participants)[["player_name"]])
-
-    # === Sort Teams ===
-    if len(participants) == 15:
-        st.divider()
-        st.subheader("Generate Balanced Teams")
-        if st.button("Sort Teams"):
-            # Fetch ratings from leaderboard (if any), fallback to 5.0
-            ratings_raw = sb_select("player_ratings")
-            rating_df = pd.DataFrame(ratings_raw)
-            rating_avg = rating_df.groupby("ratee")["rating"].mean().to_dict()
-
-            players = []
-            for p in participants:
-                player_name = p["player_name"]
-                rating = round(rating_avg.get(player_name, 5.0), 2)
-                players.append((player_name, rating))
-
-            # Sort using greedy logic
-            players.sort(key=lambda x: -x[1])
-            teams = {1: [], 2: [], 3: []}
-            totals = {1: 0.0, 2: 0.0, 3: 0.0}
-
-            for name, rating in players:
-                team_id = min(totals, key=totals.get)
-                teams[team_id].append((name, rating))
-                totals[team_id] += rating
-
-            for i in range(1, 4):
-                st.markdown(f"**Team {i}** (Avg Rating: {round(totals[i]/5, 2)})")
-                st.write(", ".join([n for n, _ in teams[i]]))
-
-            diff = round(max(totals.values()) - min(totals.values()), 2)
-            st.success(f"Rating difference between strongest and weakest team: {diff}")
-    elif len(participants) > 0:
-        st.info("Waiting for 15 players to join...")
-else:
+if not sessions:
     st.warning("No active session.")
+    st.stop()
+
+current_session = sessions[0]
+session_id = current_session["id"]
+st.subheader("Active Session")
+st.markdown(f"**Location**: {current_session['location']} - {current_session['sub_location']}  \n"
+            f"**Date**: {current_session['session_date']} at {current_session['session_time']}")
+
+# === Join / Leave ===
+name = st.text_input("Your Name")
+participants = sb_select("session_participants", [f"session_id=eq.{session_id}"])
+joined_names = [p.get('player_name', '') for p in participants]
+already_joined = name in joined_names if name else False
+
+if name:
+    if already_joined:
+        st.success("You are in the session.")
+        if st.button("Leave Session"):
+            sb_delete("session_participants", [f"session_id=eq.{session_id}", f"player_name=eq.{name}"])
+            st.success("You left the session.")
+            st.experimental_rerun()
+    else:
+        if st.button("Join Session"):
+            sb_insert("session_participants", [{
+                "session_id": session_id,
+                "player_name": name,
+                "joined_by": name
+            }])
+            st.success("You joined the session!")
+            st.experimental_rerun()
+
+# === Show Players ===
+st.markdown("### Joined Players")
+if participants:
+    df_players = pd.DataFrame(participants)
+    if "player_name" in df_players.columns:
+        st.write(df_players[["player_name"]])
+else:
+    st.info("No participants yet.")
+
+# === Sort Teams if 15 Joined ===
+if len(participants) == 15:
+    st.divider()
+    st.subheader("Generate Balanced Teams")
+    if st.button("Sort Teams"):
+        ratings_raw = sb_select("player_ratings")
+        rating_df = pd.DataFrame(ratings_raw)
+        rating_avg = rating_df.groupby("ratee")["rating"].mean().to_dict() if not rating_df.empty else {}
+
+        players = []
+        for p in participants:
+            player_name = p.get("player_name")
+            rating = round(rating_avg.get(player_name, 5.0), 2)
+            players.append((player_name, rating))
+
+        players.sort(key=lambda x: -x[1])
+        teams = {1: [], 2: [], 3: []}
+        totals = {1: 0.0, 2: 0.0, 3: 0.0}
+
+        for name, rating in players:
+            team_id = min(totals, key=totals.get)
+            teams[team_id].append((name, rating))
+            totals[team_id] += rating
+
+        for i in range(1, 4):
+            st.markdown(f"**Team {i}** (Avg Rating: {round(totals[i]/5, 2)})")
+            st.write(", ".join([n for n, _ in teams[i]]))
+
+        diff = round(max(totals.values()) - min(totals.values()), 2)
+        st.success(f"Rating difference between strongest and weakest team: {diff}")
+elif len(participants) > 0:
+    st.info("Waiting for 15 players to join...")

@@ -7,7 +7,7 @@ import random
 
 # === CONFIG ===
 SUPABASE_URL = "https://njljwzowdrtyflyzkotr.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # use your actual full key
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # Replace with your full key
 HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
 ADMIN_PASSWORD = "jogabotnito"
 
@@ -53,11 +53,12 @@ with st.expander("Start New Session (Admin Only)"):
 
 # === Get Current Session ===
 sessions = sb_select("sessions", filters=["order=created_at.desc", "limit=1"])
-if not sessions:
-    st.warning("No active session.")
+if isinstance(sessions, list) and len(sessions) > 0:
+    current_session = sessions[0]
+else:
+    st.warning("No active session found. Please start one from the admin panel above.")
     st.stop()
 
-current_session = sessions[0]
 session_id = current_session["id"]
 st.subheader("Active Session")
 st.markdown(f"**Location**: {current_session['location']} - {current_session['sub_location']}  \n"

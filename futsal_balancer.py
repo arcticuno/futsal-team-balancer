@@ -26,11 +26,11 @@ def sb_delete(table, filters):
     url = f"{SUPABASE_URL}/rest/v1/{table}?{'&'.join(filters)}"
     return requests.delete(url, headers=HEADERS)
 
-# === App Start ===
+# === Start ===
 st.set_page_config(page_title="Futsal Session", layout="centered")
 st.title("Futsal Session Manager")
 
-# === Admin Start Session ===
+# === Admin: Start Session ===
 with st.expander("Start New Session (Admin Only)"):
     admin_pw = st.text_input("Enter Admin Password", type="password")
     if admin_pw == ADMIN_PASSWORD:
@@ -42,16 +42,22 @@ with st.expander("Start New Session (Admin Only)"):
             time = st.time_input("Time", value=datetime.datetime.now().time())
             submitted = st.form_submit_button("Start Session")
             if submitted:
-                sb_insert("sessions", {
+                payload = {
                     "id": str(uuid.uuid4()),
                     "location": location,
                     "sub_location": sub_location,
                     "session_date": str(date),
                     "session_time": str(time)
-                })
-                st.success("Session started! Please refresh manually if needed.")
+                }
+                response = sb_insert("sessions", payload)
+                st.success("Session submitted. Please refresh manually to see it.")
+                st.write("DEBUG: Insert status", response.status_code)
+                try:
+                    st.json(response.json())
+                except Exception:
+                    st.write("DEBUG: Raw response:", response.text)
 
-# === Get Current Session ===
+# === Fetch current session ===
 sessions = sb_select("sessions", filters=["order=created_at.desc", "limit=1"])
 if isinstance(sessions, list) and len(sessions) > 0:
     current_session = sessions[0]

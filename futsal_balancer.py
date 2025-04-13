@@ -7,7 +7,7 @@ import random
 
 # === CONFIG ===
 SUPABASE_URL = "https://njljwzowdrtyflyzkotr.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # Replace with your full key
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."  # replace with your full key
 HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
 ADMIN_PASSWORD = "jogabotnito"
 
@@ -40,7 +40,8 @@ with st.expander("Start New Session (Admin Only)"):
             sub_location = st.text_input("Sub-Location")
             date = st.date_input("Date", value=datetime.date.today())
             time = st.time_input("Time", value=datetime.datetime.now().time())
-            if st.form_submit_button("Start Session"):
+            submitted = st.form_submit_button("Start Session")
+            if submitted:
                 sb_insert("sessions", {
                     "id": str(uuid.uuid4()),
                     "location": location,
@@ -48,8 +49,7 @@ with st.expander("Start New Session (Admin Only)"):
                     "session_date": str(date),
                     "session_time": str(time)
                 })
-                st.success("Session started!")
-                st.experimental_rerun()
+                st.success("Session started! Please refresh manually if needed.")
 
 # === Get Current Session ===
 sessions = sb_select("sessions", filters=["order=created_at.desc", "limit=1"])
